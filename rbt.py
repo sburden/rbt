@@ -33,6 +33,9 @@ pdir = 'plt'
 
 devs = ['opti','vicon','phase']
 dsfx = {'opti':'.csv','vicon':'.dcr','phase':'.txt'}
+#dsfx = {'opti':'.csv','vicon':'.dcr','phase':'.rob'}
+#dsfx = {'opti':'.csv','vicon':'.dcr','phase':'.c3d'}
+#dsfx = {'opti':'.csv','vicon':'.dcr','phase':'.nik'}
 units = {'opti':'mm','vicon':'mm','phase':'mm'}
 
 air = ['dat','plt']
@@ -65,7 +68,7 @@ def do(di,dev=None,trk='rbt',procs=ukf,exclude='_ukf.npz',**kwds):
   rbs = []
   for dfi in dfis:
     _,fi = os.path.split(dfi)
-    fi = fi.strip(sfx)
+    fi = fi.split(sfx)[0]
     if dev == 'phase' or '_' not in fi:
       if os.path.join(di, ddir, fi+exclude) not in efis:
         rbs.append( do_(os.path.join(di,fi),dev=dev,trk=trk,procs=procs,**kwds) )
@@ -202,41 +205,126 @@ class Rbt():
     di,fi = os.path.split(self.fi)
     dev = self.dev; sfx = dsfx[dev]
     if dbg:
-      print 'reading '+os.path.join(di,fi); ti = time()
+      print 'reading '+os.path.join(di,fi+sfx); ti = time()
 
     if dev == 'phase':
       _,s,a,r = fi.strip(sfx).split('_')
       self.trk = s+a+r
-      d_ = np.loadtxt(os.path.join(di,fi+sfx))
-      #t = d_[:,-1]; d0 = d_[:,:-2]; d0[d0 == 0.] = np.nan
-      t = d_[:,-2] + d_[:,-1]*1e-6; d0 = d_[:,:-3]; d0[d0 == 0.] = np.nan
-      if dbg:
-        print '%0.1f sec' % (time() - ti)
-      if N < np.inf:
-        t = t[:N]; d0 = d0[:N]
-      N0,M0 = d0.shape; D = 3; M = M0 / D
-      d0.shape = (N0,M,D)
-      # insert nan's for missing samples
-      dt = np.diff(t)#; dt = dt[(1-np.isnan(dt)).nonzero()]
-      hz = int(np.round(1./np.median(dt)))
-      if hz0:
-        assert hz0 == hz
-      else:
+      if sfx == '.nik':
+        d0 = np.loadtxt(os.path.join(di,fi+sfx))
+        t = np.arange(d0.shape[0]) / 480. # fake time samples
+        #t = d_[:,-1]; d0 = d_[:,:-2]; d0[d0 == 0.] = np.nan
+        #if np.allclose(d_[:,-2],np.arange(d_.shape[0])):
+        #  t = d_[:,-1]
+        #else:
+        #  t = d_[:,-2] + d_[:,-1]*1e-6; 
+        #d0 = d_[:,:-2]; d0[d0 == 0.] = np.nan
         if dbg:
-          print 'assuming hz = %d' % hz
-      N = int( np.ceil( (t[-1] - t[0]) * hz) ) + 1
-      d = np.nan*np.zeros((N,M,D))
-      j = np.array( np.round( (t - t[0]) * hz ), dtype=np.int )
-      t = np.arange(N) / float(hz)
-      # enforce uniform time increments
-      d[j,:,:] = d0
-      # remove unobserved features
-      nn = np.logical_not( np.all(np.isnan(d[:,:,0]),axis=0) ).nonzero()[0]
-      if dbg:
-        print 'keeping only observed markers %s' % nn
-      d = d[:,nn,:]
+          print '%0.1f sec' % (time() - ti)
+        if N < np.inf:
+          t = t[:N]; d0 = d0[:N]
+        N0,M0 = d0.shape; D = 3; M = M0 / D
+        #d0.shape = (N0,M,D)
+        d0.shape = (N0,D,M)
+        #d0 = d0.transpose(0,2,1)
+        d0 = d0 / 10. # convert from mm to cm
+        #d[:,0] = -d[:,0] # flip x axis
+        # insert nan's for missing samples
+        dt = np.diff(t)#; dt = dt[(1-np.isnan(dt)).nonzero()]
+        hz = int(np.round(1./np.median(dt)))
+        if hz0:
+          assert hz0 == hz
+        else:
+          if dbg:
+            print 'assuming hz = %d' % hz
+        N = int( np.ceil( (t[-1] - t[0]) * hz) ) + 1
+        d = np.nan*np.zeros((N,M,D))
+        j = np.array( np.round( (t - t[0]) * hz ), dtype=np.int )
+        t = np.arange(N) / float(hz)
+        # enforce uniform time increments
+        d[j,:,:] = d0
+        ## remove unobserved features
+        #nn = np.logical_not( np.all(np.isnan(d[:,:,0]),axis=0) ).nonzero()[0]
+        #if dbg:
+        #  print 'keeping observed markers %s' % nn
+        #d = d[:,nn,:]
+      elif sfx == '.rob':
+        d_ = np.loadtxt(os.path.join(di,fi+sfx))
+        if np.allclose(d_[:,-2],np.arange(d_.shape[0])):
+          t = d_[:,-1]
+        else:
+          t = d_[:,-2] + d_[:,-1]*1e-6; 
+        d0 = d_[:,:-2]; d0[d0 == 0.] = np.nan
+        if dbg:
+          print '%0.1f sec' % (time() - ti)
+        if N < np.inf:
+          t = t[:N]; d0 = d0[:N]
+        N0,M0 = d0.shape; D = 3; M = M0 / D
+        d0.shape = (N0,M,D)
+        #d0.shape = (N0,D,M); d0 = d0.transpose(0,2,1)
+        d0 = d0 / 1. # convert from mm to cm
+        dt = np.diff(t)#; dt = dt[(1-np.isnan(dt)).nonzero()]
+        hz = int(np.round(1./np.median(dt)))
+        if hz0:
+          assert hz0 == hz
+        else:
+          if dbg:
+            print 'measured hz = %d; setting hz = 480' % hz
+        hz = 480
+        N = int( np.ceil( (t[-1] - t[0]) * hz) ) + 1
+        d = np.nan*np.zeros((N,M,D))
+        j = np.array( np.round( (t - t[0]) * hz ), dtype=np.int )
+        t = np.arange(N) / float(hz)
+        # enforce uniform time increments
+        #d[j,:,:] = d0
+        d = d0
+      elif sfx == '.txt':
+        d_ = np.loadtxt(os.path.join(di,fi+sfx))
+        if np.allclose(d_[:,-2],np.arange(d_.shape[0])):
+          t = d_[:,-1]
+        else:
+          t = d_[:,-2] + d_[:,-1]*1e-6; 
+        d0 = d_[:,:-2]; d0[d0 == 0.] = np.nan
+        if dbg:
+          print '%0.1f sec' % (time() - ti)
+        if N < np.inf:
+          t = t[:N]; d0 = d0[:N]
+        N0,M0 = d0.shape; D = 3; M = M0 / D
+        d0.shape = (N0,M,D)
+        #d0.shape = (N0,D,M); d0 = d0.transpose(0,2,1)
+        d0 = d0 / 10. # convert from mm to cm
+        d0 = d0[...,[0,2,1]] # exchange y and z
+        dt = np.diff(t)#; dt = dt[(1-np.isnan(dt)).nonzero()]
+        hz = int(np.round(1./np.median(dt)))
+        if hz0:
+          assert hz0 == hz
+        else:
+          if dbg:
+            print 'measured hz = %d; setting hz = 480' % hz
+        hz = 480
+        N = int( np.ceil( (t[-1] - t[0]) * hz) ) + 1
+        d = np.nan*np.zeros((N,M,D))
+        j = np.array( np.round( (t - t[0]) * hz ), dtype=np.int )
+        t = np.arange(N) / float(hz)
+        # enforce uniform time increments
+        d[j,:,:] = d0
+        ## remove unobserved features
+        #nn = np.logical_not( np.all(np.isnan(d[:,:,0]),axis=0) ).nonzero()[0]
+        #if dbg:
+        #  print 'keeping observed markers %s' % nn
+        #d = d[:,nn,:]
+      else:
+        import c3d
+        with open(os.path.join(di,fi+sfx), 'rb') as h:
+            r = c3d.Reader(h)
+            d = np.dstack([p for p,_ in r.read_frames()])[:,:3,:].T
+        
+        t = np.arange(d.shape[0]) / 480. # fake time samples
+        d[d == 0.0] = np.nan # missing observations
+        d = d / 10. # convert from mm to cm
+        #d[:,0] = -d[:,0] # flip x axis
 
-    if dev == 'opti':
+    elif dev == 'opti':
       from mocap.python import optitrack as opti
       run = opti.Run()
       run.ReadFile(di,fi+sfx,N=N)
@@ -266,14 +354,17 @@ class Rbt():
       # enforce uniform time increments
       d[j,...] = d0
       if not( trk == 'l' ) and not( trk == 'r' ):
-        # align time samples with sync electronics
-        args = dict(fi=self.fi,dev='opti',procs=sync,dbg=False,save=False)
-        l = do_(trk='l',**args).d
-        l = np.mean( np.isnan( np.reshape( l, (l.shape[0],-1) ) ), axis=1 )
-        r = do_(trk='r',**args).d
-        r = np.mean( np.isnan( np.reshape( r, (r.shape[0],-1) ) ), axis=1 )
-        j = (.5*(l + r) < .9).nonzero()[0]
-        t = t[j] - t[j[0]]; d = d[j,...]
+        try:
+          # align time samples with sync electronics
+          args = dict(fi=self.fi,dev='opti',procs=sync,dbg=False,save=False)
+          l = do_(trk='l',**args).d
+          l = np.mean( np.isnan( np.reshape( l, (l.shape[0],-1) ) ), axis=1 )
+          r = do_(trk='r',**args).d
+          r = np.mean( np.isnan( np.reshape( r, (r.shape[0],-1) ) ), axis=1 )
+          j = (.5*(l + r) < .9).nonzero()[0]
+          t = t[j] - t[j[0]]; d = d[j,...]
+        except AssertionError:
+          pass # l or r trackable not found
 
 
     elif dev == 'vicon':
